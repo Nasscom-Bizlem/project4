@@ -149,7 +149,7 @@ def p4_process_json(path,
 
     URL = url_api
 
-    with open(path) as f:
+    with open(path, encoding='utf-8') as f:
         data = json.load(f)
         data_sum = data[0]
         data = data[1:]
