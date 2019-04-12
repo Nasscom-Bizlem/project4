@@ -35,7 +35,7 @@ def project4():
     word_special_chars = list(request.form.get('Word_Special_Character', '#*/!'))
     number_special_chars = list(request.form.get('Number_Special_Character', ',.'))
     required_urls = json.loads(request.form.get('Required_Urls', '[]'))
-    regex_line_step = json.loads(request.form.get('Regex_Line_Step', 2))
+    regex_line_step = int(request.form.get('Regex_Line_Step', 2))
 
     if file and allowed_file(file.filename, ['json']):
         filename = secure_filename(file.filename)
