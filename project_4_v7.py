@@ -759,10 +759,13 @@ def p4_process_json(path,
 
     def request_header(header_arr, header_index, res_header):
         try:
-            query_param = dict([ ('H' + str(4 - i), (header_arr[-(i + 1)] if i < len(header_arr) else ' ')) for i in range(4) ])
-            print(query_param)
+            query_param = dict([ (
+                'H' + str(4 - i), 
+                (header_arr[-(i + 1)] if i < len(header_arr) else ' ')
+            ) for i in range(4) ])
+
             r = requests.post(FLATTEN_URL, data=json.dumps(query_param))
-            
+
             r = r.json()
             if len(r['response']['docs']) > 0:
                 phrase = r['response']['docs'][0]['url']
@@ -776,19 +779,16 @@ def p4_process_json(path,
             traceback.print_exc()
         
     res_header = [ None ] * len(header_lines)
-    threads = [ threading.Thread(target=request_header, args=(header_arr, header_index, res_header)) for header_index, header_arr in enumerate(header_lines) ]
+    threads = [ threading.Thread(
+        target=request_header, 
+        args=(header_arr, header_index, res_header)
+        ) for header_index, header_arr in enumerate(header_lines) 
+    ]
 
-    if verbose:
-        print('requesting to merge header...')
-
-    for thread in threads:
-        thread.start()
-        
-    for thread in threads:
-        thread.join()
-
-    if verbose:
-        print('finish requesting...')
+    if verbose: print('requesting to merge header...')
+    for thread in threads: thread.start()
+    for thread in threads: thread.join()
+    if verbose: print('finish requesting to merge header...')
         
     header_info['flatten_api']['output'] = res_header
 
@@ -1088,14 +1088,15 @@ def p4_process_json(path,
         except Exception as e:
             traceback.print_exc()
 
-    def request_regex_header(slist, line_index, word_index, word_url, paragraph, regex_res):
+    def request_regex_header(slist, line_index, word_index, word_url, paragraph, regex_res):        
         container = [ None ] * len(paragraph)
-        threads = [ threading.Thread(target=request_regex_word, args=(word, word_index, container)) for word_index, word in enumerate(paragraph) ]
-        for thread in threads:
-            thread.start()
-        
-        for thread in threads:
-            thread.join()
+        threads = [ threading.Thread(
+            target=request_regex_word, 
+            args=(word, word_index, container)
+        ) for word_index, word in enumerate(paragraph) ]
+
+        for thread in threads: thread.start()
+        for thread in threads: thread.join()
 
         regex_res.setdefault(word_url, {
             'Words': [],
@@ -1107,7 +1108,7 @@ def p4_process_json(path,
         
         current_word = slist[line_index]['words'][word_index]
 
-        for i in range(max(0, line_index - regex_line_step), min(len(slist), line_index + regex_line_step)):
+        for i in range(max(0, line_index - regex_line_step), min(len(slist), line_index + regex_line_step + 1)):
             for word in slist[i]['words']:
                 regex_res[word_url]['Words'].append({
                     'Value': word['word'],
@@ -1165,7 +1166,6 @@ def p4_process_json(path,
 
 
     regex_urls = required_urls
-
 
     threads = []
     regex_res = {}

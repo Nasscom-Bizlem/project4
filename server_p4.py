@@ -50,6 +50,7 @@ def project4():
             number_special_chars=number_special_chars,
             required_urls=required_urls,
             regex_line_step=regex_line_step,
+            verbose=False,
         )
 
         return jsonify(r)
