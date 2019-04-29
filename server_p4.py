@@ -4,7 +4,7 @@ from flask import Flask, jsonify, request
 from werkzeug.utils import secure_filename
 import json
 
-from project_4_v7 import p4_process_json
+from project_4 import p4_process_json
 
 UPLOAD_FOLDER = './uploads'
 
@@ -29,13 +29,13 @@ def project4():
 
     file = request.files['file']
 
-    url_api = request.form.get('URL_API', 'http://3.84.244.86:8080/enhancer/chain/PurchaseOrder')
     x_thresh = int(request.form.get('X_Threshold', 0))
     y_thresh = int(request.form.get('Y_Threshold', 10))
     word_special_chars = list(request.form.get('Word_Special_Character', '#*/!'))
     number_special_chars = list(request.form.get('Number_Special_Character', ',.'))
     required_urls = json.loads(request.form.get('Required_Urls', '[]'))
     regex_line_step = int(request.form.get('Regex_Line_Step', 2))
+    mode = request.form.get('Mode', 'normal')
 
     if file and allowed_file(file.filename, ['json']):
         filename = secure_filename(file.filename)
@@ -43,13 +43,13 @@ def project4():
         file.save(path)
 
         r = p4_process_json(path,
-            url_api=url_api,
             x_thresh=x_thresh,
             y_thresh=y_thresh,
             word_special_chars=word_special_chars,
             number_special_chars=number_special_chars,
             required_urls=required_urls,
             regex_line_step=regex_line_step,
+            mode=mode,
             verbose=False,
         )
 
