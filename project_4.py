@@ -16,6 +16,7 @@ LABEL = 'http://fise.iks-project.eu/ontology/entity-reference'
 TEXT_LABEL = 'http://fise.iks-project.eu/ontology/selected-text'
 RELATION_LABEL = 'http://purl.org/dc/terms/relation'
 SELECTED_LABEL = 'http://bizlem.io/PurchaseOrderProcessing#'
+SITE_LABEL = 'http://stanbol.apache.org/ontology/entityhub/entityhub#site'
 
 def middle(value, left, right):
     return value >= left and value <= righft
@@ -201,19 +202,27 @@ def p4_process_json(path,
         sentence = ' '.join([ word for word in sres[line_index]['words'] ])
         res = {}
         try: 
-            r = requests.post(URL, data=sentence.encode('utf-8'), headers={'Content-Type': 'application/pdf'})
+            r = requests.post(
+                URL, 
+                data=sentence.encode('utf-8'), 
+                headers={'Content-Type': 'application/pdf'}
+            )
             r = r.json()
 
             for obj in r:
                 if LABEL in obj and RELATION_LABEL in obj:
                     res[obj[LABEL][0]['@id']] = obj[RELATION_LABEL][0]['@id']
 
+            line_type = []
             for obj in r:
                 if TEXT_LABEL in obj and '@id' in obj:
                     obj_id = obj['@id']
                     for kurl, vid in res.items():
                         if vid == obj_id:
                             res[kurl] = obj[TEXT_LABEL][0]['@value']
+                            
+                if SITE_LABEL in obj:
+                    line_type.append(obj[SITE_LABEL][0]['@value'])
            
             merging_r = {}
             words = slist[line_index]['words']
@@ -274,10 +283,10 @@ def p4_process_json(path,
                 sres_words_newarr.append(sres_words[line_index]['words'][word_index])
 
             slist[line_index]['words'] = slist_newarr
+            slist[line_index]['type'] = line_type
             sres_words[line_index]['words'] = sres_words_newarr
 
             sres[line_index]['words'] = list(res.keys())
-    #         print(sres_words_newarr)
 
         except Exception as e:
             traceback.print_exc()
@@ -542,8 +551,7 @@ def p4_process_json(path,
                 if pattern['main_key'] in result_labels:
                     continue
 
-                if verbose:
-                    print(line_index, line['y'], pattern['main_key'])
+                if verbose: print(line_index, line['y'], pattern['main_key'])
 
                 search_p = re.search(pattern['regex'], paragraph)
                 if search_p is not None:
@@ -552,6 +560,18 @@ def p4_process_json(path,
     for key in number_keys:
         if result[SELECTED_LABEL + key] is not None:
             result[SELECTED_LABEL + key] = to_float(result[SELECTED_LABEL + key])
+
+
+    # detect tax table
+    tax_table = []
+    for line_index, line in enumerate(slist):
+        if 'InvTableHeaders' in line['type'] or 'InvoiceFooter' in line['type']: continue
+        if 'InvoiceTax' in line['type'] and 'InvoiceAmount' in line['type']:
+            tax_table.append({
+                'line_index': line_index,
+                'line': [ word for word in line['words']],
+                'type': line['type'],
+            })
 
 
     header_keys = set([
@@ -656,8 +676,7 @@ def p4_process_json(path,
             
     main_table_headers = cluster_headers
 
-    if verbose:
-        print(json.dumps(main_table_headers, indent=2))
+    if verbose:print(json.dumps(main_table_headers, indent=2))
 
     # add info to header_info
     header_info['positions'] = []
@@ -975,6 +994,7 @@ def p4_process_json(path,
     header_info['header_table_only_url'] = items_url 
     header_info['header_table_all'] = items_all
 
+    # detect footers
     footer_headers = {
         'GrossTotal': number_regex,
         'TOTAL': number_regex,
@@ -994,6 +1014,9 @@ def p4_process_json(path,
     footer_offsets = []
 
     for lindex, line in enumerate(slist[stop_line_index:]):
+        if 'InvTableHeaders' in line['type'] or 'PurchaseEntity1' in line['type']:
+            continue 
+            
         line_index = lindex + stop_line_index
         item = {}
         item_offset = {}
@@ -1196,6 +1219,7 @@ def p4_process_json(path,
         'result': result,
         'header_info': header_info,
         'footer_info': footer_info,
+        'tax_table_info': tax_table,
         'concatenation': debug,
     }
 
