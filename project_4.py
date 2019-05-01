@@ -1016,7 +1016,7 @@ def p4_process_json(path,
     for lindex, line in enumerate(slist[stop_line_index:]):
         if 'InvTableHeaders' in line['type'] or 'PurchaseEntity1' in line['type']:
             continue 
-            
+
         line_index = lindex + stop_line_index
         item = {}
         item_offset = {}
@@ -1110,7 +1110,7 @@ def p4_process_json(path,
 
     def request_regex_word(word, word_index, container):
         try:
-            r = requests.post(REGEX_URL, data=word['word'])
+            r = requests.post(REGEX_URL, data=word['word'].encode('utf-8'))
             container[word_index] = r.json()
         except Exception as e:
             traceback.print_exc()
