@@ -3,14 +3,12 @@ import requests
 import threading
 import re
 import traceback
+from tqdm import tqdm
 
-URL = 'http://3.84.244.86:8080/enhancer/chain/PurchaseOrder'
-FLATTEN_URL = 'http://34.80.26.185:8086/PO_Processing/GetDataSolr.flatteringTemp'
-CHOOSE_URL = 'http://34.80.26.185:8086/PO_Processing/GetDataSolr.Temp'
-VALIDATION_URL = 'http://34.80.26.185:8086/PO_Processing/ReArrangingofData'
-REGEX_URL = 'http://35.221.160.146:5020/regexResult'
-OVERLAP_URL = 'http://35.186.166.22:8082/portal/servlet/service/Poheader.poi'
-
+URL = 'http://3.84.244.86:8080/enhancer/chain/PurchaseOrderV3'
+FLATTEN_URL = 'http://34.74.243.55:8086/PO_Processing/GetDataSolr.flatteringTemp'
+CHOOSE_URL = 'http://34.74.243.55:8086/PO_Processing/GetDataSolr.Temp'
+REGEX_URL = 'http://34.74.243.55:5020/regexResult'
 
 LABEL = 'http://fise.iks-project.eu/ontology/entity-reference'
 TEXT_LABEL = 'http://fise.iks-project.eu/ontology/selected-text'
@@ -158,9 +156,6 @@ def parseJSON(data, x_thres, y_thres,
             current_line['words'] = []
 
     response = [ line for line in response if len(line['words']) > 0 ] 
-    # for i, line in enumerate(response):
-    #     words = [ t['word'] for t in line['words']]
-    #     print(i, line['y'], words)
 
     return response
 
@@ -174,7 +169,6 @@ def p4_process_json(path,
         regex_line_step=2,
         mode='normal',
     ):
-
     
     header_info = {}
     result = {}
@@ -193,6 +187,7 @@ def p4_process_json(path,
         word_special_chars=set(word_special_chars),
         number_special_chars=set(number_special_chars),
     )
+
 
     max_y = int(slist[-1]['y'])
     max_x = 0
@@ -312,18 +307,23 @@ def p4_process_json(path,
         except Exception as e:
             traceback.print_exc()
 
-
-    def request_all(sres):
+    def request_all():
         threads = [ threading.Thread(
             target=request_line_and_replace, 
             args=(slist, sres, sres_words, line_index),
         ) for line_index in range(len(sres)) ]
         for thread in threads: thread.start()
-        for thread in threads: thread.join()
+        for thread in tqdm(threads): thread.join()
 
     if verbose: print('requesting to get urls...')
-    request_all(sres)
+    request_all()
     if verbose: print('finish requesting...')
+
+
+    # for line_index, line in enumerate(slist):
+    #     sentence = [ word['word'] for word in line['words'] ]
+    #     print(line_index, line['y'], sentence, line['type'])
+    # return
 
     debug = []
     for line_index, line in enumerate(slist):
@@ -583,529 +583,70 @@ def p4_process_json(path,
             result[SELECTED_LABEL + key] = to_float(result[SELECTED_LABEL + key])
 
 
-    # detect tax table
-    tax_table = []
+    # detect tax table (only 1 line)
+    # tax_table_line_index = line_index
+    # tax_table_info = { 'tax_table_line_index': [] }
+    # for line_index, line in enumerate(slist):
+    #     if 'InvTableHeaders' in line['type'] or 'InvoiceFooter' in line['type']: continue
+    #     if 'InvoiceTax' in line['type'] or 'InvoiceAmount' in line['type']:
+    #         tax_table_info['tax_table_line_index'].append(line_index)
+    #         tax_table_line_index = line_index
+    #         break
+
+    # detect headers
+    def is_header(line_index):
+        line_type = slist[line_index]['type']
+        if 'InvoiceFooter' in line_type or len(line_type) == 0:
+            return False
+        return True
+
+    candidate_header_indexes = []
     for line_index, line in enumerate(slist):
-        if 'InvTableHeaders' in line['type'] or 'InvoiceFooter' in line['type']: continue
-        if 'InvoiceTax' in line['type'] and 'InvoiceAmount' in line['type']:
-            tax_table.append({
-                'line_index': line_index,
-                'line': [ word for word in line['words']],
-                'type': line['type'],
-            })
+        # if line_index == tax_table_line_index: continue 
+        if is_header(line_index):
+            candidate_header_indexes.append(line_index)
 
+    # detect header cluster
+    center_header_index = None
+    for lindex in candidate_header_indexes:
+        start = max(0, lindex - 2)
+        stop = min(len(slist), lindex + 3)
 
-    header_keys = set([
-        'SNo',
-        'DescriptionOfServices',
-        'HSN/SAC',
-        'Unit',
-        'Quantity',
-        'Rate',
-        'AmountNumbers',
-        'CSGT',
-        'IGST',
-        'SGST',
-    ])
+        count_headers = 0
+        for line_index in range(start, stop):
+            for line_type in slist[line_index]['type']:
+                if line_type == 'InvTableHeaders':
+                    count_headers += 1
 
-
-    selected = []
-    header_map_arr = []
-
-
-    end = False
-
-    for line_index, words in enumerate(slist):
-        if len(sres[line_index]['words']) == 0: continue
-            
-        for word_index, word in enumerate(words['words']):
-            url = sres_words[line_index]['words'][word_index]
-            if SELECTED_LABEL not in url: continue
-                
-            url_key = url.split('#')[-1]
-            if url_key not in header_keys: continue
-                
-            x1, x2 = word['x1'], word['x2']
-            
-            header_map_arr.append((
-                SELECTED_LABEL + url_key,
-                line_index,
-                words['y'],
-                x1,
-                x2,
-            ))
-
-    freq = [0] * max_y
-
-    for (url_key, _, y, _, _) in header_map_arr:
-        start_y = max(0, y - 30)
-        stop_y = min(max_y, y + 30)
-        for i in range(start_y, stop_y + 1):
-            freq[i] += 1
-
-    clusters_top = []
-    for i in range(1, max_y - 1):
-        if freq[i] > freq[i - 1] and freq[i] > freq[i + 1]:
-            clusters_top.append((i, freq[i]))
-        elif freq[i] > freq[i - 1] and freq[i] == freq[i + 1]:
-            for j in range(i + 1, max_y - 1):
-                if freq[j] < freq[i]:
-                    clusters_top.append((i, freq[i]))
-                    break
-                elif freq[j] > freq[i]:
-                    break
-
-    clusters_top.sort(key=lambda x: -x[1])
-
-    if verbose:
-        print(clusters_top)
-
-    cluster_index = 0
-    description_index = None
-    amount_index = None
-    cluster_headers = []
-    max_cluster_headers = []
-    amount_cluster_headers = []
-
-    while cluster_index < len(clusters_top): 
-        current_y = clusters_top[cluster_index][0]
-        for (url_key, line_index, y, x1, x2) in header_map_arr:
-            if y >= current_y - 30 and y <= current_y + 30:
-                cluster_headers.append((url_key, line_index, y, x1, x2))
-                if 'Description' in url_key:
-                    description_index = cluster_index
-                if 'Amount' in url_key:
-                    amount_index = cluster_index
-
-        if cluster_index == 0:
-            max_cluster_headers = cluster_headers
-            
-        if amount_index is not None:
-            amount_cluster_headers = cluster_headers
-
-        if description_index is not None:
+        if count_headers >= 2:
+            center_header_index = lindex 
             break
-        else:
-            cluster_index += 1
-            cluster_headers = []
-            
-    if description_index is None:
-        if amount_index is not None:
-            cluster_headers = amount_cluster_headers
-        else:
-            cluster_headers = max_cluster_headers
-            
-    main_table_headers = cluster_headers
 
-    if verbose:print(json.dumps(main_table_headers, indent=2))
-
-    # add info to header_info
-    header_info['positions'] = []
-    for (_, line_index, y, _, _) in main_table_headers:
-        new_item = True
-        for h in header_info['positions']:
-            if h['y'] == y:
-                new_item = False
-                break
-
-        if new_item:
-            header_info['positions'].append({
-                'y': y,
-                'line_index': line_index,
-            })
-
-    header_line_index = list(set([ line_index for (_, line_index, _, _, _) in main_table_headers ]))[:4]
-    header_scan_index = [ len(slist[line_index]['words']) - 1 for line_index in header_line_index ]
-    header_lines = []
-    header_boxes = []
+    header_line_index = []
+    for line_index in range(max(0, center_header_index - 2), min(len(slist), center_header_index + 3)):
+        if is_header(line_index):
+            header_line_index.append(line_index)
 
     header_info['header_line_index'] = header_line_index
 
-    while True:
-        right_most_line = None
-        right_x = 0
-        for i, line_index in enumerate(header_line_index):
-            if header_scan_index[i] < 0: continue
-            words = slist[line_index]['words']
-            if words[header_scan_index[i]]['x2'] > right_x:
-                right_x = words[header_scan_index[i]]['x2']
-                right_most_line = i
-        
-        is_middle = True
-        arr = [ ' ' ] * len(header_line_index)
-        
-        current_line_index = header_line_index[right_most_line]
-        current_word_index = header_scan_index[right_most_line]
-        current_word = slist[current_line_index]['words'][current_word_index]
-        arr[right_most_line] = current_word['word']
-        
-        left_x = current_word['x1']
-        right_x = current_word['x2']
-        y = slist[current_line_index]['y']
-        
-        is_middle = True
-        for i, line_index in enumerate(header_line_index):
-            if i == right_most_line or header_scan_index[i] < 0: continue
-            words = slist[line_index]['words']
-            word_index = header_scan_index[i]
-            
-            if words[word_index]['x2'] > current_word['x1']:
-                arr[i] = words[word_index]['word']
-                header_scan_index[i] -= 1
-                
-                left_x = min(left_x, words[word_index]['x1'])
-                right_x = max(right_x, words[word_index]['x2'])
-                
-                is_middle = False
-                
-        if is_middle:
-            if current_word_index >= 1:
-                prev_word = slist[current_line_index]['words'][current_word_index - 1]
-                mid_word_x = (current_word['x2'] + prev_word['x1']) // 2
-                
-                for i, line_index in enumerate(header_line_index):
-                    if i >= right_most_line or header_scan_index[i] < 0: continue
-                    words = slist[line_index]['words']
-                    word_index = header_scan_index[i]
-                    
-                    if words[word_index]['x1'] <= mid_word_x and words[word_index]['x2'] >= mid_word_x:
-                        arr[i] = words[word_index]['word']
-                        left_x = min(left_x, words[word_index]['x1'])
-                        right_x = max(right_x, words[word_index]['x2'])
-                
-        valid_arr = False
-        for word in arr:
-            if re.search('[a-zA-Z]+', word) is not None:
-                valid_arr = True
-                break
-                
-        if valid_arr:
-            header_lines.append(arr)
-            header_boxes.append((current_line_index, y, left_x, right_x))
-        
-        header_scan_index[right_most_line] -= 1
-        
-        negative_header_scan_index = [ scan_index for scan_index in header_scan_index if scan_index < 0 ]
-        if len(negative_header_scan_index) == len(header_scan_index):
-            break
-
-    if verbose:
-        print(header_lines)
-
-    header_info['flatten_api'] = {
-        'input': [],
-        'output': [],
-    }
-
-    for header_arr in header_lines:
-        query_param = dict([ ('H' + str(4 - i), (header_arr[-(i + 1)] if i < len(header_arr) else ' ')) for i in range(4) ])
-        header_info['flatten_api']['input'].append(query_param)
-
-    def request_header(header_arr, header_index, res_header):
-        try:
-            query_param = dict([ (
-                'H' + str(4 - i), 
-                (header_arr[-(i + 1)] if i < len(header_arr) else ' ')
-            ) for i in range(4) ])
-
-            r = requests.post(FLATTEN_URL, data=json.dumps(query_param))
-
-            r = r.json()
-            if len(r['response']['docs']) > 0:
-                phrase = r['response']['docs'][0]['url']
-                res_header[header_index] = phrase
-                return phrase
-            else:
-                res_header[header_index] = None
-                return None
-                
-        except Exception as e:
-            traceback.print_exc()
-        
-    res_header = [ None ] * len(header_lines)
-    threads = [ threading.Thread(
-        target=request_header, 
-        args=(header_arr, header_index, res_header)
-        ) for header_index, header_arr in enumerate(header_lines) 
-    ]
-
-    if verbose: print('requesting to merge header...')
-    for thread in threads: thread.start()
-    for thread in threads: thread.join()
-    if verbose: print('finish requesting to merge header...')
-        
-    header_info['flatten_api']['output'] = res_header
-
-    main_res_header = [ arr for arr in res_header if arr is not None ]
-    main_header_boxes = [ header_boxes[i] for i in range(len(res_header)) if res_header[i] is not None ]
-    res_header_url = [ None ] * len(main_res_header)
-
-
-    header_info['template_api'] = {
-        'input': dict([ ('column' + str(len(main_res_header) - i), harr[0]) for i, harr in enumerate(main_res_header) ]),
-        'output': None,
-    }
-
-    def request_chosen_header(main_res_header, res_header_url):
-        try:
-            header_query = dict([ ('column' + str(len(main_res_header) - i), harr[0]) for i, harr in enumerate(main_res_header) ])
-            r = requests.post(CHOOSE_URL, data=json.dumps(header_query))
-
-            try: 
-                r = r.json()['response']['docs'][0]['RequiredColumns'][0]
-                r = json.loads(r)
-                
-                header_info['template_api']['output'] = r
-                for col_index, col_url in r.items():
-                    res_index = int(col_index[6:])
-                    res_header_url[-res_index] = col_url
-            except Exception as e:
-                for i, harr in enumerate(main_res_header):
-                    res_header_url[i] = harr[0]
-
-            return r
-                
-        except Exception as e:
-            traceback.print_exc()
-        
-    request_chosen_header(main_res_header, res_header_url)
-
-    header_pos = []
-    start_line_index = 0
-
-    MARGIN_HEADER = {
-        'SRNO': 5,
-        'HSN/SAC': 8,
-        'Quantity': 6,
-        'Rate': 15,
-        'Unit': 5,
-        'AMOUNT': 15,
-        'PreTaxAmount': 15,
-        'SGSTPercent': 4,
-        'CGSTPercent': 4,
-        'IGSTPercent': 4,
-        'SGSTAmt': 15,
-        'CGSTAmt': 15,
-        'IGSTAmt': 15,
-        'SGST': 15,
-        'CGST': 15,
-        'IGST': 15,
-        'TOTAL': 10,  
-    }
-
-    if verbose:
-        print(main_header_boxes)
-        print(res_header_url)
-
-    for i, (line_index, y, left_x, right_x) in enumerate(main_header_boxes):
-        if res_header_url[i] is None: continue
-        header = res_header_url[i]
-        header_pos.append((header, line_index, y, [left_x, right_x]))
-        if start_line_index < line_index:
-            start_line_index = line_index
-        
-    header_pos.sort(key=lambda x: x[-1][0])
-    for header, _, _, x_pos in header_pos:
-        key = header.split('#')[-1]
-
-        if 'unknown' in header or key not in MARGIN_HEADER:
-            x_pos[0] -= 8
-            x_pos[1] += 8
-        elif 'Description' not in header:
-            x_pos[0] -= MARGIN_HEADER[key]
-            x_pos[1] += MARGIN_HEADER[key]
-
-    header_pos[-1][-1][-1] = max_x
-
-    for i, (header, _, _, x_pos) in enumerate(header_pos):
-        if 'Description' in header:
-            if i > 0:
-                x_pos_prev = header_pos[i - 1][-1]
-                x_pos[0] = x_pos_prev[1] + 1
-            if i < len(header_pos) - 1:
-                x_pos_next = header_pos[i + 1][-1]
-                x_pos[1] = x_pos_next[0] - 1
-
-    stop_line_index = start_line_index + 1
-
-    end = False
-    for line_index, words in enumerate(slist):
-        if line_index <= stop_line_index or len(sres[line_index]['words']) == 0: 
-            continue
-            
-        for word_index, word in enumerate(words['words']):
-            url = sres_words[line_index]['words'][word_index]
-            if SELECTED_LABEL not in url: continue
-                
-            url_key = url.split('#')[-1]
-            if url_key == 'GrossTotal' or 'SGST' in url_key or 'CGST' in url_key or 'IGST' in url_key:
-                stop_line_index = line_index
-                end = True
-                break
-        if end:
-            break
-
-    header_info['start_line_index'] = start_line_index
-    header_info['stop_line_index'] = stop_line_index
-
-    header_info['header_position'] = [ {
-        'header': header,
-        'line_index': line_index,
-        'y': y,
-        'x1': x_pos[0],
-        'x2': x_pos[1],
-    } for (header, line_index, y, x_pos) in header_pos ]
-
-    items_url = []
-    items_all = []
-
-    def createItem():
-        keys = [
-            'SRNO',
-            'Description',
-            'HSN/SAC',
-            'Quantity',
-            'Rate',
-            'Unit',
-            'AMOUNT',
-            'PreTaxAmount',
-            'SGSTPercent',
-            'CGSTPercent',
-            'IGSTPercent',
-            'SGSTAmt',
-            'CGSTAmt',
-            'IGSTAmt',
-            'TOTAL',
-            'SGST',
-            'CGST',
-            'IGST',
-        ]
-        
-        item = {}
-        for key in keys:
-            item[SELECTED_LABEL + key] = ''
-        return item
-
-    for words_line, words in enumerate(slist[start_line_index + 1:stop_line_index]):
-        item_url = createItem()
-        item_all = {}
-        for word in words['words']:
-            x1, x2 = word['x1'], word['x2']
-            
-            for header, _, _, x_pos in header_pos:
-                if x1 >= x_pos[0] and x2 <= x_pos[1]:
-                    desc = word['word']
-
-                    item_all.setdefault(header, '')
-                    if 'unknown' not in header and header in item_url:
-                        item_url[header] += desc + ' '
-                    
-                    item_all[header] += desc + ' '
-
-        line_no = words_line + start_line_index + 1
-        item_url['line_no'] = line_no
-        item_all['line_no'] = line_no
-        items_url.append(item_url)
-        items_all.append(item_all)
-        
-    if verbose:
-        print(json.dumps(items_url, indent=2))
-        print(json.dumps(items_all, indent=2))
-
-    header_info['header_table_only_url'] = items_url 
-    header_info['header_table_all'] = items_all
-
     # detect footers
-    footer_headers = {
-        'GrossTotal': number_regex,
-        'TOTAL': number_regex,
-        'SGSTAmt': number_regex,
-        'CGSTAmt': number_regex,
-        'IGSTAmt': number_regex,
-        'TotalAmt': number_regex,
-        'CGSTAmount': number_regex,
-        'SGSTAmount': number_regex,
-        'IGSTAmount': number_regex,
-        'CGST': number_regex,
-        'SGST': number_regex,
-        'IGST': number_regex,
-    }
+    def is_footer(line_index):
+        line_type = slist[line_index]['type']
+        if len(line_type) != 1: return False
+        if 'InvTableHeaders' in line_type or 'PurchaseEntity1' in line_type:
+            return False
+        return True
 
-    footer_lines = []
-    footer_offsets = []
-
-    for lindex, line in enumerate(slist[stop_line_index:]):
-        if 'InvTableHeaders' in line['type'] or 'PurchaseEntity1' in line['type']:
-            continue 
-
-        line_index = lindex + stop_line_index
-        item = {}
-        item_offset = {}
+    footer_line_index = []
+    start_index = header_line_index[-1] if len(header_line_index) > 0 else 0
+    for lindex, line in enumerate(slist[start_index:]):
+        line_index = start_index + lindex
+        # if line_index == tax_table_line_index: continue
+        if is_footer(line_index):
+            footer_line_index.append(line_index)
 
 
-        found_url = False
-        for word_index, word in enumerate(line['words']):
-            url = sres_words[line_index]['words'][word_index]
-            if SELECTED_LABEL in url:
-                term = url.split('#')[-1]
-                found_url = True
-                if term in footer_headers:
-                    regex = footer_headers[term]
-                    for candidate_word in line['words'][:word_index:-1]:
-                        match_r = re.match(number_regex, candidate_word['word'])
-                        if match_r:
-                            match_num = to_float(candidate_word['word'][match_r.start():match_r.end()])
-                            item[url] = match_num
-                            item_offset[url] = {
-                                'value': match_num,
-                                'x1_offset': candidate_word['x1'] - word['x1'],
-                                'x2_offset': candidate_word['x2'] - word['x2'],
-                                'x1_x2_offset': candidate_word['x1'] - word['x2'],
-                                'x2_x1_offset': candidate_word['x2'] - word['x1'],
-                                'y_offset': 0,
-                                'line_offset': 0,
-                            }
-
-                            break
-
-        if not found_url:
-            for word_reverse_index, word in enumerate(line['words'][::-1]):
-                match_r = re.match(number_regex, word['word'])
-                if match_r:
-                    header = {
-                        'word': None,
-                        'x1': 0,
-                        'x2': 0,
-                    }
-
-                    if word_reverse_index < len(line['words']) - 1:
-                        header = line['words'][-(word_reverse_index + 2)]
-
-                    header_text = header['word'] if header['word'] is not None else 'unknown'
-
-                    match_num = to_float(word['word'][match_r.start():match_r.end()])
-                    item[header_text] = match_num
-                    item_offset[header_text] = {
-                        'value': match_num,
-                        'x1_offset': header['x1'] - word['x1'],
-                        'x2_offset': header['x2'] - word['x2'],
-                        'x1_x2_offset': header['x1'] - word['x2'],
-                        'x2_x1_offset': header['x2'] - word['x1'],
-                        'y_offset': 0,
-                        'line_offset': 0,
-                    }
-        
-        if len(item.keys()) == 0:
-            continue
-            
-        item['line_no'] = line_index
-        item_offset['line_no'] = line_index
-        footer_lines.append(item)
-        footer_offsets.append(item_offset)
-
-    footer_info['footer_table_only_url'] = footer_lines
-    footer_info['footer_table_with_offset'] = footer_offsets
-
+    footer_info['footer_line_index'] = footer_line_index
 
     # Regex part
     def concat_rows_and_cols(slist, line_index, word_index, n_lines=10, no_limit=False):
@@ -1240,7 +781,7 @@ def p4_process_json(path,
         'result': result,
         'header_info': header_info,
         'footer_info': footer_info,
-        'tax_table_info': tax_table,
+        # 'tax_table_info': tax_table_info,
         'concatenation': debug,
     }
 
