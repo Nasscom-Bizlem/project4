@@ -29,8 +29,8 @@ def project4():
 
     file = request.files['file']
 
-    x_thresh = int(request.form.get('X_Threshold', 0))
-    y_thresh = int(request.form.get('Y_Threshold', 10))
+    x_thres = int(request.form.get('X_Threshold', 0))
+    y_thres = int(request.form.get('Y_Threshold', 10))
     word_special_chars = list(request.form.get('Word_Special_Character', '#*/!'))
     number_special_chars = list(request.form.get('Number_Special_Character', ',.'))
     required_urls = json.loads(request.form.get('Required_Urls', '[]'))
@@ -43,8 +43,8 @@ def project4():
         file.save(path)
 
         r = p4_process_json(path,
-            x_thresh=x_thresh,
-            y_thresh=y_thresh,
+            x_thres=x_thres,
+            y_thres=y_thres,
             word_special_chars=word_special_chars,
             number_special_chars=number_special_chars,
             required_urls=required_urls,

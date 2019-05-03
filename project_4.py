@@ -141,12 +141,33 @@ def parseJSON(data, x_thres, y_thres,
                 'words': [],
             }
 
+    for line_index in range(len(response) - 1, 0, -1):
+        current_line = response[line_index]
+        prev_line = response[line_index - 1]
+
+        if len(current_line['words']) == 0: continue
+        if current_line['y'] - prev_line['y'] > y_thres * 2: continue
+
+        x_left = current_line['words'][0]['x1']
+        x_right = 0
+        if len(prev_line['words']) > 0:
+            x_right = prev_line['words'][-1]['x2']
+
+        if x_right < x_left:
+            prev_line['words'] += current_line['words']
+            current_line['words'] = []
+
+    response = [ line for line in response if len(line['words']) > 0 ] 
+    # for i, line in enumerate(response):
+    #     words = [ t['word'] for t in line['words']]
+    #     print(i, line['y'], words)
+
     return response
 
 def p4_process_json(path,
         verbose=True,
-        x_thresh=0,
-        y_thresh=10,
+        x_thres=0,
+        y_thres=10,
         word_special_chars=[],
         number_special_chars=[],
         required_urls=[],
@@ -168,7 +189,7 @@ def p4_process_json(path,
         elif mode == 'pdf':
             data = formatJSON(data)
 
-    slist = parseJSON(data, x_thresh, y_thresh,
+    slist = parseJSON(data, x_thres, y_thres,
         word_special_chars=set(word_special_chars),
         number_special_chars=set(number_special_chars),
     )
