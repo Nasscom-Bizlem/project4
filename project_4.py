@@ -8,7 +8,7 @@ from tqdm import tqdm
 URL = 'http://3.84.244.86:8080/enhancer/chain/PurchaseOrderV3'
 FLATTEN_URL = 'http://34.74.243.55:8086/PO_Processing/GetDataSolr.flatteringTemp'
 CHOOSE_URL = 'http://34.74.243.55:8086/PO_Processing/GetDataSolr.Temp'
-REGEX_URL = 'http://34.74.243.55:5020/regexResult'
+REGEX_URL = 'http://34.74.142.84:5020/regexResult'
 
 LABEL = 'http://fise.iks-project.eu/ontology/entity-reference'
 TEXT_LABEL = 'http://fise.iks-project.eu/ontology/selected-text'
