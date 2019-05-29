@@ -99,7 +99,7 @@ def parseJSON(data, x_thres, y_thres,
 
         if hist_y[yMid] <= hist_y[curLineYCoord] + y_thres and hist_y[yMid] >= hist_y[curLineYCoord] - y_thres:
             if xStart <= curXEnd + x_thres \
-                or (xStart <= curXEnd + 2 * x_thres and ( \
+                or (xStart <= curXEnd + 2.5 * x_thres and ( \
                     (curWord[0] in characters) \
                     or curWord[0] in close_chars \
                     or ((curWord[0] in set(list(number_special_chars) + ['%'])) # need char % \
@@ -155,7 +155,7 @@ def parseJSON(data, x_thres, y_thres,
             prev_line['words'] += current_line['words']
             current_line['words'] = []
 
-    response = [ line for line in response if len(line['words']) > 0 ] 
+    response = [ line for line in response if len(line['words']) > 0 ]
 
     return response
 
@@ -169,7 +169,7 @@ def p4_process_json(path,
         regex_line_step=2,
         mode='normal',
     ):
-    
+
     header_info = {}
     result = {}
     footer_info = {}
@@ -217,10 +217,10 @@ def p4_process_json(path,
     def request_line_and_replace(slist, sres, sres_words, line_index):
         sentence = ' '.join([ word for word in sres[line_index]['words'] ])
         res = {}
-        try: 
+        try:
             r = requests.post(
-                URL, 
-                data=sentence.encode('utf-8'), 
+                URL,
+                data=sentence.encode('utf-8'),
                 headers={'Content-Type': 'application/pdf'}
             )
             r = r.json()
@@ -236,29 +236,29 @@ def p4_process_json(path,
                     for kurl, vid in res.items():
                         if vid == obj_id:
                             res[kurl] = obj[TEXT_LABEL][0]['@value']
-                            
+
                 if SITE_LABEL in obj:
                     line_type.append(obj[SITE_LABEL][0]['@value'])
-           
+
             merging_r = {}
             words = slist[line_index]['words']
-            
+
             word_index = 0
             while word_index < len(words):
                 word = words[word_index]
                 found = False
-                
+
                 for kurl, vtext in res.items():
                     if kurl in merging_r:
                         continue
-                        
+
                     if found:
                         break
 
                     vtext_first_word = vtext.split(' ')[0]
                     if vtext_first_word not in word['word']:
                         continue
-                        
+
                     current_word_indexes = [ word_index ]
                     current_s = word['word']
                     current_i = word_index + 1
@@ -266,13 +266,13 @@ def p4_process_json(path,
                         current_word_indexes.append(current_i)
                         current_s += ' ' + words[current_i]['word']
                         current_i += 1
-                    
+
                     if vtext not in current_s:
                         continue
-                    
+
                     found = True
                     merging_r[kurl] = current_word_indexes
-                    
+
                 if not found:
                     word_index += 1
 
@@ -309,7 +309,7 @@ def p4_process_json(path,
 
     def request_all():
         threads = [ threading.Thread(
-            target=request_line_and_replace, 
+            target=request_line_and_replace,
             args=(slist, sres, sres_words, line_index),
         ) for line_index in range(len(sres)) ]
         for thread in threads: thread.start()
@@ -357,13 +357,13 @@ def p4_process_json(path,
     def concat(slist, line_index, index, n_lines=2):
         paragraph = ' '.join([ word['word'] for word in slist[line_index]['words'][index:] ]) + '\n'
         current_word = slist[line_index]['words'][index]
-        
+
         for line in slist[line_index + 1:(line_index + 1) + n_lines]:
             for word in line['words']:
                 if word['x1'] >= current_word['x1'] - 15:
                     paragraph += word['word'] + ' '
             paragraph += '\n'
-        
+
         return paragraph
 
 
@@ -602,7 +602,7 @@ def p4_process_json(path,
 
     candidate_header_indexes = []
     for line_index, line in enumerate(slist):
-        # if line_index == tax_table_line_index: continue 
+        # if line_index == tax_table_line_index: continue
         if is_header(line_index):
             candidate_header_indexes.append(line_index)
 
@@ -619,7 +619,7 @@ def p4_process_json(path,
                     count_headers += 1
 
         if count_headers >= 2:
-            center_header_index = lindex 
+            center_header_index = lindex
             break
 
     header_line_index = []
@@ -656,9 +656,9 @@ def p4_process_json(path,
             nword['y'] = slist[line_index]['y']
             nword['line_index'] = line_index
             paragraph.append(nword)
-        
+
         current_word = slist[line_index]['words'][word_index]
-        
+
         for lindex in range(line_index + 1, min(line_index + n_lines + 1, len(slist))):
             line = slist[lindex]
             for word in line['words']:
@@ -667,7 +667,7 @@ def p4_process_json(path,
                     nword['y'] = line['y']
                     nword['line_index'] = lindex
                     paragraph.append(nword)
-        
+
         return paragraph
 
     def request_regex_word(word, word_index, container):
@@ -677,10 +677,10 @@ def p4_process_json(path,
         except Exception as e:
             traceback.print_exc()
 
-    def request_regex_header(slist, line_index, word_index, word_url, paragraph, regex_res):        
+    def request_regex_header(slist, line_index, word_index, word_url, paragraph, regex_res):
         container = [ None ] * len(paragraph)
         threads = [ threading.Thread(
-            target=request_regex_word, 
+            target=request_regex_word,
             args=(word, word_index, container)
         ) for word_index, word in enumerate(paragraph) ]
 
@@ -694,7 +694,7 @@ def p4_process_json(path,
             'Date': [],
             'UKS': [],
         })
-        
+
         current_word = slist[line_index]['words'][word_index]
 
         for i in range(max(0, line_index - regex_line_step), min(len(slist), line_index + regex_line_step + 1)):
@@ -709,7 +709,7 @@ def p4_process_json(path,
                     'X2-X1 OffSet': word['x2'] - current_word['x1'],
                     'X2-X2 OffSet': word['x2'] - current_word['x2'],
                 })
-                
+
         for rr_index, rr in enumerate(container):
             word = paragraph[rr_index]
             for item in rr:
@@ -725,7 +725,7 @@ def p4_process_json(path,
                     'Regex_X2-X1 OffSet': word['x2'] - current_word['x1'],
                     'Regex_X2-X2 OffSet': word['x2'] - current_word['x2'],
                 })
-                
+
         for word in paragraph:
             search_result = re.search('\d+', word['word'])
             if search_result is not None:
@@ -763,19 +763,19 @@ def p4_process_json(path,
             word_url = sres_words[line_index]['words'][word_index]
             if word_url in regex_urls:
                 paragraph = concat_rows_and_cols(slist, line_index, word_index)
-                
+
                 threads.append(threading.Thread(
-                    target=request_regex_header, 
+                    target=request_regex_header,
                     args=(slist, line_index, word_index, word_url, paragraph, regex_res),
                 ))
-    
+
     if verbose: print('requesting for regex...')
     for thread in threads: thread.start()
     for thread in threads: thread.join()
     if verbose: print('finish requesting')
 
     header_info['Rules'] = regex_res
-            
+
 
     return {
         'result': result,
