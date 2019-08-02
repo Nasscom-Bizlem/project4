@@ -6,8 +6,6 @@ import traceback
 from tqdm import tqdm
 
 URL = 'http://3.84.244.86:8080/enhancer/chain/PurchaseOrderV3'
-FLATTEN_URL = 'http://34.74.243.55:8086/PO_Processing/GetDataSolr.flatteringTemp'
-CHOOSE_URL = 'http://34.74.243.55:8086/PO_Processing/GetDataSolr.Temp'
 REGEX_URL = 'http://34.74.142.84:5020/regexResult'
 
 LABEL = 'http://fise.iks-project.eu/ontology/entity-reference'
@@ -172,7 +170,6 @@ def p4_process_json(path,
 
     header_info = {}
     result = {}
-    footer_info = {}
 
     with open(path, encoding='utf-8') as f:
         data = json.load(f)
@@ -320,10 +317,6 @@ def p4_process_json(path,
     if verbose: print('finish requesting...')
 
 
-    # for line_index, line in enumerate(slist):
-    #     sentence = [ word['word'] for word in line['words'] ]
-    #     print(line_index, line['y'], sentence, line['type'])
-    # return
 
     debug = []
     for line_index, line in enumerate(slist):
@@ -354,6 +347,7 @@ def p4_process_json(path,
         })
 
 
+    '''
     def concat(slist, line_index, index, n_lines=2):
         paragraph = ' '.join([ word['word'] for word in slist[line_index]['words'][index:] ]) + '\n'
         current_word = slist[line_index]['words'][index]
@@ -369,8 +363,7 @@ def p4_process_json(path,
 
     date_regex = '\d{1,2}\s?[\.\-\/\:]\s?\d{1,2}\s?[\.\-\/\:]\s?\d{4}|\d{1,2}[\s\-]+[A-Za-z]{3,}[\s\-]+\d{4}|\d{1,2}\s?\/\s?\d{1,2}\s?\/\s?\d{2}'
     # (MM.DD.YYYY) | MM - DDD - YYYY | MM - DD - YYYY | MM / DD / YY
-    number_regex = '(?<![\.\d])(?:\,? ?\d+ ?)+(?:\. ?\d+)?(?!\d{0,} ?%)'
-    percentage_regex = '\d+\s?%|\d+\s?\.\s?%'
+    number_regex = '(?<![\.\d])(?:\,? ?\d+ ?)+(?:\. ?\d+)?(?!\d{0,} ?%)' percentage_regex = '\d+\s?%|\d+\s?\.\s?%'
 
     # processing text
     patterns = {
@@ -581,72 +574,7 @@ def p4_process_json(path,
     for key in number_keys:
         if result[SELECTED_LABEL + key] is not None:
             result[SELECTED_LABEL + key] = to_float(result[SELECTED_LABEL + key])
-
-
-    # detect tax table (only 1 line)
-    # tax_table_line_index = line_index
-    # tax_table_info = { 'tax_table_line_index': [] }
-    # for line_index, line in enumerate(slist):
-    #     if 'InvTableHeaders' in line['type'] or 'InvoiceFooter' in line['type']: continue
-    #     if 'InvoiceTax' in line['type'] or 'InvoiceAmount' in line['type']:
-    #         tax_table_info['tax_table_line_index'].append(line_index)
-    #         tax_table_line_index = line_index
-    #         break
-
-    # detect headers
-    def is_header(line_index):
-        line_type = slist[line_index]['type']
-        if 'InvoiceFooter' in line_type or len(line_type) == 0:
-            return False
-        return True
-
-    candidate_header_indexes = []
-    for line_index, line in enumerate(slist):
-        # if line_index == tax_table_line_index: continue
-        if is_header(line_index):
-            candidate_header_indexes.append(line_index)
-
-    # detect header cluster
-    center_header_index = None
-    for lindex in candidate_header_indexes:
-        start = max(0, lindex - 2)
-        stop = min(len(slist), lindex + 3)
-
-        count_headers = 0
-        for line_index in range(start, stop):
-            for line_type in slist[line_index]['type']:
-                if line_type == 'InvTableHeaders':
-                    count_headers += 1
-
-        if count_headers >= 2:
-            center_header_index = lindex
-            break
-
-    header_line_index = []
-    for line_index in range(max(0, center_header_index - 2), min(len(slist), center_header_index + 3)):
-        if is_header(line_index):
-            header_line_index.append(line_index)
-
-    header_info['header_line_index'] = header_line_index
-
-    # detect footers
-    def is_footer(line_index):
-        line_type = slist[line_index]['type']
-        if len(line_type) != 1: return False
-        if 'InvTableHeaders' in line_type or 'PurchaseEntity1' in line_type:
-            return False
-        return True
-
-    footer_line_index = []
-    start_index = header_line_index[-1] if len(header_line_index) > 0 else 0
-    for lindex, line in enumerate(slist[start_index:]):
-        line_index = start_index + lindex
-        # if line_index == tax_table_line_index: continue
-        if is_footer(line_index):
-            footer_line_index.append(line_index)
-
-
-    footer_info['footer_line_index'] = footer_line_index
+    '''
 
     # Regex part
     def concat_rows_and_cols(slist, line_index, word_index, n_lines=10, no_limit=False):
@@ -771,7 +699,7 @@ def p4_process_json(path,
 
     if verbose: print('requesting for regex...')
     for thread in threads: thread.start()
-    for thread in threads: thread.join()
+    for thread in tqdm(threads): thread.join()
     if verbose: print('finish requesting')
 
     header_info['Rules'] = regex_res
@@ -780,8 +708,6 @@ def p4_process_json(path,
     return {
         'result': result,
         'header_info': header_info,
-        'footer_info': footer_info,
-        # 'tax_table_info': tax_table_info,
         'concatenation': debug,
     }
 
